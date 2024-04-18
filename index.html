@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>3D Tunnel Presentation</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+    // tunnel.js
+    document.addEventListener('DOMContentLoaded', init);
+    
+    function init() {
+        const scene = setupScene();
+        const camera = setupCamera();
+        const renderer = setupRenderer();
+        const tunnel = createTunnel(scene);
+        const pointLight = setupLighting(scene);
+        const loader = new THREE.TextureLoader();
+        
+        addEndImageToTunnel(scene, loader, tunnel);
+        addTunnelTexture(tunnel, loader);
+        
+        // Pass the scene along with other parameters
+        animate(camera, tunnel, pointLight, renderer, loader, scene);
+    }
+    
+    function setupScene() {
+        return new THREE.Scene();
+    }
+    
+    function setupCamera() {
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 0); // Starting at the tunnel opening
+        camera.lookAt(0, 0, 0); // Looking towards the depth of the tunnel
+        return camera;
+    }
+    
+    function setupRenderer() {
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        return renderer;
+    }
+    
+    function createTunnel(scene) {
+        const path = new CustomSinCurve(10);
+        const geometry = new THREE.TubeGeometry(path, 100, 2, 8, false);
+        const material = new THREE.MeshPhongMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+        const tunnel = new THREE.Mesh(geometry, material);
+        scene.add(tunnel);
+        return tunnel;
+    }
+    
+    function setupLighting(scene) {
+        const pointLight = new THREE.PointLight(0xffffff, 1, 30);
+        scene.add(pointLight);
+        return pointLight;
+    }
+    
+    function addEndImageToTunnel(scene, loader, tunnel) {
+        const endPosition = tunnel.geometry.parameters.path.getPoint(1);
+        loader.load('slideend.png', function(texture) {
+            const planeMaterial = new THREE.MeshBasicMaterial({
+                map: texture,
+                side: THREE.DoubleSide,
+                transparent: true,
+            });
+            const planeGeometry = new THREE.PlaneGeometry(1.8, 1.0);
+            const endImage = new THREE.Mesh(planeGeometry, planeMaterial);
+            
+            endImage.position.copy(endPosition);
+            
+            endImage.rotation.x = 7.9; // Rotate to face the opposite direction
+            endImage.rotation.y = 2.67;
+            endImage.rotation.z = 4.64;
+            scene.add(endImage);
+        });
+    }
+    
+    function addTunnelTexture(tunnel, loader) {
+        loader.load('pattern.png', function(texture) {
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(4, 1);
+            // Update the tunnel's material with the loaded texture
+            tunnel.material.map = texture;
+            tunnel.material.needsUpdate = true; // Ensure the material update is noticed
+        });
+    }
+
+    
+    let t = 0; // Parameter to move the camera along the curve
+    
+    function animate(camera, tunnel, pointLight, renderer, loader, scene) {
+        requestAnimationFrame(function() {
+            // Only continue the loop if t is less than the stopping point, slightly beyond 1
+            if (t < 0.99) {
+                animate(camera, tunnel, pointLight, renderer, loader, scene);
+            }
+        });
+        if (t < 0.99) { // This might need fine-tuning
+            const speedAdjustment = calculateSpeedAdjustment(t);
+            t += speedAdjustment;
+        }
+        
+        
+        t = Math.min(t, 0.99);
+
+        const path = tunnel.geometry.parameters.path;
+        const position = path.getPointAt(Math.min(t, 1)); // Ensure we don't exceed the path length
+        const lookAtPosition = path.getPointAt(Math.min(t + 0.01, 1)); // Adjust lookAt position as well
+        
+        camera.position.set(position.x, position.y, position.z);
+        camera.lookAt(lookAtPosition.x, lookAtPosition.y, lookAtPosition.z);
+        pointLight.position.set(position.x, position.y, position.z);
+        
+        const lightIntensity = calculateLightIntensity(t);
+        pointLight.intensity = lightIntensity;
+
+        
+        renderer.render(scene, camera);
+    }
+
+    function calculateLightIntensity(t) {
+        // Light intensity should be minimal at the start, increase to maximum at peak speed, then decrease again
+        if (t < 0.2) {
+            // Increase intensity quickly in the acceleration phase
+            return 0 + (t / 0.2) * 0.5; // Ramps up from 0.5 to 1.0
+        } else if (t >= 0.2 && t < 0.8) {
+            // Maintain maximum intensity during peak speed
+            return 1.0;
+        } else {
+            // Decrease intensity quickly in the deceleration phase
+            return 1.0; // Ramps down from 1.0 to 0.5
+        }
+    }
+
+    function calculateSpeedAdjustment(t) {
+        // Create an even more aggressive speed adjustment
+        if (t < 0.2) { // Quicker acceleration to max speed
+            return 0.0004 + (t / 0.2) * 0.0036; // Steeper acceleration curve
+        } else if (t >= 0.2 && t < 0.8) { // Very short duration at max speed
+            return 0.004; // Max speed maintained for a shorter middle section
+        } else { // Quicker deceleration to stop
+            return 0.004 - ((t - 0.8) / 0.2) * 0.0036; // Steeper deceleration curve
+        }
+    }
+
+ 
+    
+    class CustomSinCurve extends THREE.Curve {
+        constructor(scale = 1) {
+            super();
+            this.scale = scale;
+        }
+        
+        getPoint(t, optionalTarget = new THREE.Vector3()) {
+            const tx = t * 3 - 1.5;
+            const ty = Math.sin(2 * Math.PI * t);
+            const tz = Math.cos(2 * Math.PI * t);
+            return optionalTarget.set(tx, ty, tz).multiplyScalar(this.scale);
+        }
+    }
+ 
+</script>
+</body>
+</html>
